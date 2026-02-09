@@ -1,6 +1,6 @@
+import httpx
 from datetime import date, timedelta
 from typing import List, Optional
-import httpx
 from langchain.agents import AgentState
 from langchain.tools import ToolRuntime, tool
 from langchain_core.messages import SystemMessage
@@ -47,10 +47,11 @@ async def search_issues(
         body: Optional search terms to look for in the body
         days_ago: Optional number of days ago to search for issues
     """
+    owner = runtime.context.owner
     repository = runtime.context.repository
 
     query = [
-        f"repo:{repository}",
+        f"repo:{owner}/{repository}",
         f"created:>{date.today() - timedelta(days=days_ago)}",
     ]
 
@@ -74,27 +75,7 @@ async def search_issues(
         simplified_issues = []
 
         for issue in data.get("items", []):
-            simplified_issue = {
-                "number": issue.get("number"),
-                "title": issue.get("title"),
-                "body": (
-                    issue["body"][:500] + "..."
-                    if len(issue.get("body", "")) > 500
-                    else issue.get("body", "")
-                ),
-                "state": issue.get("state"),
-                "html_url": issue.get("html_url"),
-                "created_at": issue.get("created_at"),
-                "updated_at": issue.get("updated_at"),
-                "comments_count": issue.get("comments"),
-                "labels": [label.get("name") for label in issue.get("labels", [])],
-                "author": issue.get("user", {}).get("login"),
-                "assignee": (
-                    issue.get("assignee", {}).get("login")
-                    if issue.get("assignee")
-                    else None
-                ),
-            }
+            simplified_issue = get_issue_dict(issue)
             simplified_issues.append(simplified_issue)
 
         return {
@@ -113,9 +94,24 @@ def update_issue(runtime: ToolRuntime[TaskContext]):
     pass
 
 
-@tool(description="Gets the information about a specific issue")
-def get_issue(runtime: ToolRuntime[TaskContext]):
-    pass
+@tool
+async def get_issue(issue_number: int, runtime: ToolRuntime[TaskContext]):
+    """Gets the information about a specific issue
+
+    Args:
+        issue_number: The number of the issue to get
+    """
+    owner = runtime.context.owner
+    repository = runtime.context.repository
+
+    async with httpx.AsyncClient(headers=get_default_headers()) as client:
+        response = await client.get(
+            f"{BASE_URL}/repos/{owner}/{repository}/issues/{issue_number}"
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        return get_issue_dict(data)
 
 
 @tool
@@ -138,12 +134,26 @@ def delete_comment(runtime: ToolRuntime[TaskContext]):
     pass
 
 
-def get_state(runtime: ToolRuntime[TaskContext]) -> IssueState:
-    return runtime.state
-
-
-def get_token(runtime: ToolRuntime[TaskContext]):
-    return runtime.context.token
+def get_issue_dict(issue: dict) -> dict:
+    return {
+        "number": issue.get("number"),
+        "title": issue.get("title"),
+        "body": (
+            issue["body"][:500] + "..."
+            if len(issue.get("body", "")) > 500
+            else issue.get("body", "")
+        ),
+        "state": issue.get("state"),
+        "url": issue.get("html_url"),
+        "created_at": issue.get("created_at"),
+        "updated_at": issue.get("updated_at"),
+        "comments_count": issue.get("comments"),
+        "labels": [label.get("name") for label in issue.get("labels", [])],
+        "author": issue.get("user", {}).get("login"),
+        "assignee": (
+            issue.get("assignee", {}).get("login") if issue.get("assignee") else None
+        ),
+    }
 
 
 def get_default_headers():
