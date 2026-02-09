@@ -1,10 +1,10 @@
 <script lang="ts">
-  import github from '$lib/assets/icons/GitHub_Invertocat_Black.svg';
   import send from '$lib/assets/icons/send.svg';
-  import folder from '$lib/assets/icons/folder.svg';
+  import Source from './Source.svelte';
+  import Repo from './Repo.svelte';
 </script>
 
-<div class="border rounded-3xl p-2">
+<div class="border border-neutral-300 rounded-3xl p-2 mb-10 shadow-xl">
   <div
     contenteditable="true"
     class="focus:outline-none mx-2 mt-2 mb-2 min-h-20"
@@ -12,13 +12,8 @@
   ></div>
   <div class="flex justify-between w-full">
     <div class="flex gap-2">
-      <button class="btn btn-circle">
-        <img src={github} alt="GitHub" />
-      </button>
-      <button class="btn rounded-full">
-        <img src={folder} alt="Folder" />
-        <p class="max-w-20 text-ellipsis truncate">Park Place Technologies</p>
-      </button>
+      <Source />
+      <Repo />
     </div>
     <button class="btn btn-circle">
       <img src={send} alt="Send" class="mt-0.5 mr-0.5" height="20" width="20" />
