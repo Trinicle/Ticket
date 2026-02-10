@@ -15,7 +15,7 @@ from langchain_core.messages import ToolMessage
 from langgraph.types import Command
 from langgraph.checkpoint.sqlite import SqliteSaver
 from backend.src.agent.tools.github import (
-    github_sub_agents,
+    get_github_sub_agents,
     GITHUB_SYSTEM_PROMPT,
 )
 
@@ -92,12 +92,12 @@ def change_available_tools(
     )
 
 
-def create_rag_agent():
+async def create_rag_agent(token: str):
     return create_deep_agent(
         model="openai:gpt-4o-mini",
         system_prompt=GITHUB_SYSTEM_PROMPT,
         context_schema=TaskContext,
         middleware=[change_available_tools, auth_guard_middleware],
         checkpointer=checkpointer,
-        subagents=github_sub_agents
+        subagents=await get_github_sub_agents(token),
     )
