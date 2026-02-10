@@ -8,7 +8,7 @@ from backend.src.agent.tools.github.graphql_utils import (
 )
 
 
-@tool
+@tool("get_issue_comments")
 async def get_issue_comments_graphql(
     runtime: ToolRuntime[TaskContext],
     issue_number: int,
@@ -67,7 +67,7 @@ async def get_issue_comments_graphql(
     }
 
 
-@tool
+@tool("add_comment_to_issue")
 async def add_comment_graphql(
     runtime: ToolRuntime[TaskContext],
     issue_number: int,
@@ -126,7 +126,7 @@ async def add_comment_graphql(
     return format_comment_graphql(comment)
 
 
-@tool
+@tool("update_comment")
 async def update_comment_graphql(
     runtime: ToolRuntime[TaskContext],
     comment_id: str,
@@ -161,7 +161,7 @@ async def update_comment_graphql(
     return format_comment_graphql(comment)
 
 
-@tool
+@tool("delete_comment")
 async def delete_comment_graphql(
     runtime: ToolRuntime[TaskContext],
     comment_id: str,
@@ -198,3 +198,10 @@ def format_comment_graphql(comment: dict) -> dict:
         "updated_at": comment.get("updatedAt"),
         "url": comment.get("url"),
     }
+
+comments_tools = [
+    get_issue_comments_graphql,
+    add_comment_graphql,
+    update_comment_graphql,
+    delete_comment_graphql,
+]

@@ -1,6 +1,5 @@
 from typing import List, Optional
 from langchain.tools import ToolRuntime, tool
-from langgraph.types import interrupt
 
 from backend.src.agent.agent import TaskContext
 from backend.src.agent.tools.github.graphql_utils import (
@@ -11,7 +10,7 @@ from backend.src.agent.tools.github.graphql_utils import (
 )
 
 
-@tool
+@tool("list_issue_labels")
 async def list_issue_labels_graphql(
     runtime: ToolRuntime[TaskContext],
     issue_number: int,
@@ -70,7 +69,7 @@ async def list_issue_labels_graphql(
     }
 
 
-@tool
+@tool("add_label_to_issue")
 async def add_labels_to_issue_graphql(
     runtime: ToolRuntime[TaskContext],
     issue_number: int,
@@ -110,17 +109,6 @@ async def add_labels_to_issue_graphql(
     }}
     """
 
-    response = interrupt(
-        {
-            "action": "add_labels_to_issue",
-            "issue_number": issue_number,
-            "labels": label_names,
-        }
-    )
-
-    if response.get("action") != "approve":
-        return {"error": "User did not approve the action"}
-
     data = await execute_graphql_query(runtime, mutation)
     labels = data["addLabelsToLabelable"]["labelable"]["labels"]["nodes"]
 
@@ -133,7 +121,7 @@ async def add_labels_to_issue_graphql(
     }
 
 
-@tool
+@tool("clear_labels_from_issue")
 async def remove_all_labels_from_issue_graphql(
     runtime: ToolRuntime[TaskContext],
     issue_number: int,
@@ -170,7 +158,7 @@ async def remove_all_labels_from_issue_graphql(
     return {"message": f"All labels removed from issue {issue_number}"}
 
 
-@tool
+@tool("remove_label_from_issue")
 async def remove_label_from_issue_graphql(
     runtime: ToolRuntime[TaskContext],
     issue_number: int,
@@ -232,7 +220,7 @@ async def remove_label_from_issue_graphql(
     return {"labels": [format_label_graphql(label) for label in labels]}
 
 
-@tool
+@tool("get_repository_labels")
 async def list_repository_labels_graphql(
     runtime: ToolRuntime[TaskContext],
     first: int = 30,
@@ -286,7 +274,7 @@ async def list_repository_labels_graphql(
     }
 
 
-@tool
+@tool("create_label")
 async def create_label_graphql(
     runtime: ToolRuntime[TaskContext],
     name: str,
@@ -353,7 +341,7 @@ async def create_label_graphql(
     return format_label_graphql(label)
 
 
-@tool
+@tool("get_label_by_name")
 async def get_label_graphql(
     runtime: ToolRuntime[TaskContext],
     label_name: str,
@@ -393,7 +381,7 @@ async def get_label_graphql(
     return format_label_graphql(label)
 
 
-@tool
+@tool("update_label")
 async def update_label_graphql(
     runtime: ToolRuntime[TaskContext],
     label_id: str,
@@ -439,7 +427,7 @@ async def update_label_graphql(
     return format_label_graphql(label)
 
 
-@tool
+@tool("delete_label")
 async def delete_label_graphql(
     runtime: ToolRuntime[TaskContext],
     label_id: str,
@@ -472,3 +460,16 @@ def format_label_graphql(label: dict) -> dict:
         "default": label.get("isDefault", False),
         "url": label.get("url"),
     }
+
+
+labels_tools = [
+    list_issue_labels_graphql,
+    add_labels_to_issue_graphql,
+    remove_all_labels_from_issue_graphql,
+    remove_label_from_issue_graphql,
+    list_repository_labels_graphql,
+    create_label_graphql,
+    get_label_graphql,
+    update_label_graphql,
+    delete_label_graphql,
+]

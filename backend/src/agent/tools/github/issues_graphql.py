@@ -8,7 +8,7 @@ from backend.src.agent.tools.github.graphql_utils import (
 )
 
 
-@tool
+@tool("get_issue")
 async def get_issue_graphql(
     runtime: ToolRuntime[TaskContext],
     issue_number: int,
@@ -48,7 +48,7 @@ async def get_issue_graphql(
     return format_issue_graphql(issue)
 
 
-@tool
+@tool("list_repository_issues")
 async def list_repository_issues_graphql(
     runtime: ToolRuntime[TaskContext],
     states: Optional[List[str]] = None,
@@ -123,7 +123,7 @@ async def list_repository_issues_graphql(
     }
 
 
-@tool
+@tool("search_issues")
 async def search_issues_graphql(
     runtime: ToolRuntime[TaskContext],
     query_string: str,
@@ -181,7 +181,7 @@ async def search_issues_graphql(
     }
 
 
-@tool
+@tool("create_issue")
 async def create_issue_graphql(
     runtime: ToolRuntime[TaskContext],
     title: str,
@@ -255,7 +255,7 @@ async def create_issue_graphql(
     return format_issue_graphql(issue)
 
 
-@tool
+@tool("update_issue")
 async def update_issue_graphql(
     runtime: ToolRuntime[TaskContext],
     issue_number: int,
@@ -488,3 +488,12 @@ def format_issue_graphql(issue: dict) -> dict:
     formatted_issue["parent_issue"] = parent_issue
 
     return formatted_issue
+
+
+issues_tools = [
+    get_issue_graphql,
+    list_repository_issues_graphql,
+    search_issues_graphql,
+    create_issue_graphql,
+    update_issue_graphql,
+]

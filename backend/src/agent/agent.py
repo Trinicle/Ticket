@@ -1,9 +1,9 @@
 from dataclasses import dataclass
+from deepagents import create_deep_agent
 import sqlite3
 from typing import Callable
 import httpx
 import json
-from langchain.agents import create_agent
 from langchain.agents.middleware import (
     ModelRequest,
     ModelResponse,
@@ -12,16 +12,14 @@ from langchain.agents.middleware import (
     wrap_tool_call,
 )
 from langchain_core.messages import ToolMessage
-from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.types import Command
-from langgraph.checkpoint.sqlite import SQLiteSaver
+from langgraph.checkpoint.sqlite import SqliteSaver
 from backend.src.agent.tools.github import (
-    github_tools,
+    github_sub_agents,
     GITHUB_SYSTEM_PROMPT,
-    IssueState,
 )
 
-checkpointer = SQLiteSaver(sqlite3.connect("backend/tool-approval.db"))
+checkpointer = SqliteSaver(sqlite3.connect("backend/tool-approval.db"))
 
 
 @dataclass
@@ -88,8 +86,6 @@ def change_available_tools(
 
     if platform == "github":
         system_prompt = GITHUB_SYSTEM_PROMPT
-        tools = github_tools
-        state = IssueState
 
     return handler(
         request.override(tools=tools, system_message=system_prompt, state=state)
@@ -97,12 +93,11 @@ def change_available_tools(
 
 
 def create_rag_agent():
-    return create_agent(
+    return create_deep_agent(
         model="openai:gpt-4o-mini",
         system_prompt=GITHUB_SYSTEM_PROMPT,
-        tools=github_tools,
-        state_schema=IssueState,
         context_schema=TaskContext,
         middleware=[change_available_tools, auth_guard_middleware],
         checkpointer=checkpointer,
+        subagents=github_sub_agents
     )

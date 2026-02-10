@@ -1,33 +1,13 @@
 from ast import List
-from langchain.agents import AgentState
+from deepagents import CompiledSubAgent
+from langchain.agents import AgentState, create_agent
+from langchain.tools import ToolRuntime, tool
 from langchain_core.messages import SystemMessage
 
-# GraphQL Tools
-from backend.src.agent.tools.github.issues_graphql import (
-    get_issue_graphql,
-    list_repository_issues_graphql,
-    search_issues_graphql,
-    create_issue_graphql,
-    update_issue_graphql,
-)
-from backend.src.agent.tools.github.comments_graphql import (
-    get_issue_comments_graphql,
-    add_comment_graphql,
-    update_comment_graphql,
-    delete_comment_graphql,
-)
-from backend.src.agent.tools.github.labels_graphql import (
-    list_issue_labels_graphql,
-    add_labels_to_issue_graphql,
-    remove_all_labels_from_issue_graphql,
-    remove_label_from_issue_graphql,
-    list_repository_labels_graphql,
-    create_label_graphql,
-    get_label_graphql,
-    update_label_graphql,
-    delete_label_graphql,
-    resolve_label_name_to_id_graphql,
-)
+from backend.src.agent.agent import TaskContext, checkpointer
+from backend.src.agent.tools.github.issues_graphql import issues_tools
+from backend.src.agent.tools.github.comments_graphql import comments_tools
+from backend.src.agent.tools.github.labels_graphql import labels_tools
 
 GITHUB_SYSTEM_PROMPT = SystemMessage(
     content="""
@@ -37,8 +17,6 @@ You are a helpful assistant that can investigate, create, modify, and delete Git
 
 
 class IssueState(AgentState):
-    """Context about a GitHub issue for RAG"""
-
     issue_number: int
     title: str
     body: str
@@ -61,26 +39,65 @@ class IssueState(AgentState):
 GRAPHQL_URL = "https://api.github.com/graphql"
 
 
-github_tools = [
-    # Issue Management (GraphQL)
-    get_issue_graphql,
-    list_repository_issues_graphql,
-    search_issues_graphql,
-    create_issue_graphql,
-    update_issue_graphql,
-    # Comment Management (GraphQL)
-    get_issue_comments_graphql,
-    add_comment_graphql,
-    update_comment_graphql,
-    delete_comment_graphql,
-    # Label Management (GraphQL)
-    list_issue_labels_graphql,
-    add_labels_to_issue_graphql,
-    remove_all_labels_from_issue_graphql,
-    remove_label_from_issue_graphql,
-    list_repository_labels_graphql,
-    create_label_graphql,
-    get_label_graphql,
-    update_label_graphql,
-    delete_label_graphql,
+def get_issue_agent():
+    return create_agent(
+        name="issue_agent",
+        tools=issues_tools,
+        interrupt_before={
+            "get_issue": False,
+            "list_repository_issues": False,
+            "search_issues": False,
+            "create_issue": True,
+            "update_issue": True,
+        }
+    )
+
+
+def get_comment_agent():
+    return create_agent(
+        name="comment_agent",
+        tools=comments_tools,
+        interrupt_before={
+            "get_issue_comments": False,
+            "add_comment_to_issue": True,
+            "update_comment": True,
+            "delete_comment": True,
+        }
+    )
+
+
+def get_label_agent():
+    return create_agent(
+        name="label_agent",
+        tools=labels_tools,
+        interrupt_before={
+            "list_issue_labels": False,
+            "add_label_to_issue": True,
+            "clear_labels_from_issue": True,
+            "remove_label_from_issue": True,
+            "get_repository_labels": False,
+            "create_label": True,
+            "get_label_by_name": False,
+            "update_label": True,
+            "delete_label": True,
+        }
+    )
+
+
+github_sub_agents = [
+    CompiledSubAgent(
+        name="issue_agent",
+        tools=issues_tools,
+        runnable=get_issue_agent(),
+    ),
+    CompiledSubAgent(
+        name="comment_agent",
+        tools=comments_tools,
+        runnable=get_comment_agent(),
+    ),
+    CompiledSubAgent(
+        name="label_agent",
+        tools=labels_tools,
+        runnable=get_label_agent(),
+    ),
 ]
