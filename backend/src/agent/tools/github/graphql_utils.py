@@ -1,6 +1,6 @@
 import httpx
 import json
-from typing import Dict, Any, Optional
+from typing import Dict, Any, List, Optional
 from backend.src.agent.agent import TaskContext
 from langchain.tools import ToolRuntime
 
@@ -39,6 +39,74 @@ async def execute_graphql_query(
             raise Exception(f"GraphQL errors: {'; '.join(error_messages)}")
 
         return data.get("data", {})
+
+
+async def get_label_ids_from_names(
+    runtime: ToolRuntime[TaskContext], label_names: List[str]
+) -> List[str]:
+    if not label_names:
+        return []
+
+    owner = runtime.context.owner
+    repository = runtime.context.repository
+
+    query = f"""
+    query GetLabelIdsByNames($owner: String!, $name: String!, $first: Int!) {{
+      repository(owner: $owner, name: $name) {{
+        labels(first: $first) {{
+          nodes {{
+            id
+            name
+          }}
+        }}
+      }}
+    }}
+    """
+
+    variables = {
+        "owner": owner,
+        "name": repository,
+        "first": 100,
+    }
+
+    data = await execute_graphql_query(runtime, query, variables)
+    repository_labels = data["repository"]["labels"]["nodes"]
+
+    label_ids = []
+    label_names_set = set[str](label_names)
+
+    for label in repository_labels:
+        if label["name"] in label_names_set:
+            label_ids.append(label["id"])
+
+    return label_ids
+
+
+async def get_issue_id(runtime: ToolRuntime[TaskContext], issue_number: int) -> str:
+    owner = runtime.context.owner
+    repository = runtime.context.repository
+
+    issue_query = """
+      query GetIssueId($owner: String!, $name: String!, $number: Int!) {
+        repository(owner: $owner, name: $name) {
+          issue(number: $number) {
+            id
+          }
+        }
+      }
+      """
+
+    issue_data = await execute_graphql_query(
+        runtime,
+        issue_query,
+        {
+            "owner": owner,
+            "name": repository,
+            "number": issue_number,
+        },
+    )
+
+    return issue_data["repository"]["issue"]["id"]
 
 
 # Common GraphQL fragments for reuse

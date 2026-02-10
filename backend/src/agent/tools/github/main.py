@@ -19,7 +19,6 @@ from backend.src.agent.tools.github.comments_graphql import (
 from backend.src.agent.tools.github.labels_graphql import (
     list_issue_labels_graphql,
     add_labels_to_issue_graphql,
-    set_issue_labels_graphql,
     remove_all_labels_from_issue_graphql,
     remove_label_from_issue_graphql,
     list_repository_labels_graphql,
@@ -77,7 +76,6 @@ github_tools = [
     # Label Management (GraphQL)
     list_issue_labels_graphql,
     add_labels_to_issue_graphql,
-    set_issue_labels_graphql,
     remove_all_labels_from_issue_graphql,
     remove_label_from_issue_graphql,
     list_repository_labels_graphql,
@@ -85,5 +83,4 @@ github_tools = [
     get_label_graphql,
     update_label_graphql,
     delete_label_graphql,
-    resolve_label_name_to_id_graphql,
 ]

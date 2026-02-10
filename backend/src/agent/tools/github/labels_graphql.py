@@ -1,10 +1,13 @@
 from typing import List, Optional
 from langchain.tools import ToolRuntime, tool
+from langgraph.types import interrupt
 
 from backend.src.agent.agent import TaskContext
 from backend.src.agent.tools.github.graphql_utils import (
     execute_graphql_query,
     LABEL_FRAGMENT,
+    get_issue_id,
+    get_label_ids_from_names,
 )
 
 
@@ -16,7 +19,7 @@ async def list_issue_labels_graphql(
     after: Optional[str] = None,
 ):
     """Lists all labels for an issue using GraphQL
-    
+
     Args:
         issue_number: The number that identifies the issue
         first: Number of results to fetch (max 100)
@@ -24,7 +27,7 @@ async def list_issue_labels_graphql(
     """
     owner = runtime.context.owner
     repository = runtime.context.repository
-    
+
     query = f"""
     query ListIssueLabels($owner: String!, $name: String!, $number: Int!, $first: Int!, $after: String) {{
       repository(owner: $owner, name: $name) {{
@@ -47,7 +50,7 @@ async def list_issue_labels_graphql(
     
     {LABEL_FRAGMENT}
     """
-    
+
     variables = {
         "owner": owner,
         "name": repository,
@@ -56,10 +59,10 @@ async def list_issue_labels_graphql(
     }
     if after:
         variables["after"] = after
-    
+
     data = await execute_graphql_query(runtime, query, variables)
     labels_data = data["repository"]["issue"]["labels"]
-    
+
     return {
         "totalCount": labels_data["totalCount"],
         "pageInfo": labels_data["pageInfo"],
@@ -71,141 +74,63 @@ async def list_issue_labels_graphql(
 async def add_labels_to_issue_graphql(
     runtime: ToolRuntime[TaskContext],
     issue_number: int,
-    label_ids: List[str],
+    label_names: List[str],
 ):
     """Adds labels to an issue using GraphQL (keeps existing labels)
-    
+
     Args:
         issue_number: The number that identifies the issue
-        label_ids: List of label node IDs to add to the issue
+        label_names: List of label node IDs to add to the issue
     """
-    owner = runtime.context.owner
-    repository = runtime.context.repository
-    
-    # First, get the issue ID
-    issue_query = """
-    query GetIssueId($owner: String!, $name: String!, $number: Int!) {
-      repository(owner: $owner, name: $name) {
-        issue(number: $number) {
-          id
-        }
-      }
-    }
-    """
-    
-    issue_data = await execute_graphql_query(runtime, issue_query, {
-        "owner": owner,
-        "name": repository,
-        "number": issue_number,
-    })
-    
-    issue_id = issue_data["repository"]["issue"]["id"]
-    
+    label_ids = await get_label_ids_from_names(runtime, label_names)
+
+    if not label_ids:
+        return {"error": f"No labels found for the given names: {label_names}"}
+
+    issue_id = await get_issue_id(runtime, issue_number)
+
+    if not issue_id:
+        return {"error": f"Issue {issue_number} not found"}
+
     # Build label IDs array string
     label_ids_string = ", ".join([f'"{lid}"' for lid in label_ids])
-    
+
     mutation = f"""
     mutation AddLabelsToIssue {{
       addLabelsToLabelable(input: {{labelableId: "{issue_id}", labelIds: [{label_ids_string}]}}) {{
         labelable {{
-          ... on Issue {{
-            labels(first: 50) {{
-              nodes {{
-                ...LabelFields
-              }}
+          labels {{
+            totalCount
+            nodes {{
+              name
             }}
           }}
         }}
       }}
     }}
-    
-    {LABEL_FRAGMENT}
     """
-    
+
+    response = interrupt(
+        {
+            "action": "add_labels_to_issue",
+            "issue_number": issue_number,
+            "labels": label_names,
+        }
+    )
+
+    if response.get("action") != "approve":
+        return {"error": "User did not approve the action"}
+
     data = await execute_graphql_query(runtime, mutation)
     labels = data["addLabelsToLabelable"]["labelable"]["labels"]["nodes"]
-    
-    return {"labels": [format_label_graphql(label) for label in labels]}
 
+    for label in labels:
+        if label["name"] not in label_names:
+            return {"error": f"Label {label['name']} not added to issue {issue_number}"}
 
-@tool
-async def set_issue_labels_graphql(
-    runtime: ToolRuntime[TaskContext],
-    issue_number: int,
-    label_ids: List[str],
-):
-    """Sets labels for an issue using GraphQL (replaces all existing labels)
-    
-    Args:
-        issue_number: The number that identifies the issue
-        label_ids: List of label node IDs to set for the issue (replaces existing)
-    """
-    owner = runtime.context.owner
-    repository = runtime.context.repository
-    
-    # First, get the issue ID and current labels
-    issue_query = """
-    query GetIssueDetails($owner: String!, $name: String!, $number: Int!) {
-      repository(owner: $owner, name: $name) {
-        issue(number: $number) {
-          id
-          labels(first: 100) {
-            nodes {
-              id
-            }
-          }
-        }
-      }
+    return {
+        "message": f"Labels all labels were successfully added to issue {issue_number}"
     }
-    """
-    
-    issue_data = await execute_graphql_query(runtime, issue_query, {
-        "owner": owner,
-        "name": repository,
-        "number": issue_number,
-    })
-    
-    issue_id = issue_data["repository"]["issue"]["id"]
-    current_label_ids = [label["id"] for label in issue_data["repository"]["issue"]["labels"]["nodes"]]
-    
-    # Remove all current labels first
-    if current_label_ids:
-        current_ids_string = ", ".join([f'"{lid}"' for lid in current_label_ids])
-        remove_mutation = f"""
-        mutation RemoveLabelsFromIssue {{
-          removeLabelsFromLabelable(input: {{labelableId: "{issue_id}", labelIds: [{current_ids_string}]}}) {{
-            clientMutationId
-          }}
-        }}
-        """
-        await execute_graphql_query(runtime, remove_mutation)
-    
-    # Add new labels
-    if label_ids:
-        label_ids_string = ", ".join([f'"{lid}"' for lid in label_ids])
-        add_mutation = f"""
-        mutation AddLabelsToIssue {{
-          addLabelsToLabelable(input: {{labelableId: "{issue_id}", labelIds: [{label_ids_string}]}}) {{
-            labelable {{
-              ... on Issue {{
-                labels(first: 50) {{
-                  nodes {{
-                    ...LabelFields
-                  }}
-                }}
-              }}
-            }}
-          }}
-        }}
-        
-        {LABEL_FRAGMENT}
-        """
-        
-        data = await execute_graphql_query(runtime, add_mutation)
-        labels = data["addLabelsToLabelable"]["labelable"]["labels"]["nodes"]
-        return {"labels": [format_label_graphql(label) for label in labels]}
-    
-    return {"labels": []}
 
 
 @tool
@@ -214,53 +139,34 @@ async def remove_all_labels_from_issue_graphql(
     issue_number: int,
 ):
     """Removes all labels from an issue using GraphQL
-    
+
     Args:
         issue_number: The number that identifies the issue
     """
-    owner = runtime.context.owner
-    repository = runtime.context.repository
-    
-    # First, get the issue ID and current labels
-    issue_query = """
-    query GetIssueLabels($owner: String!, $name: String!, $number: Int!) {
-      repository(owner: $owner, name: $name) {
-        issue(number: $number) {
-          id
-          labels(first: 100) {
-            nodes {
-              id
-            }
-          }
-        }
-      }
-    }
-    """
-    
-    issue_data = await execute_graphql_query(runtime, issue_query, {
-        "owner": owner,
-        "name": repository,
-        "number": issue_number,
-    })
-    
-    issue_id = issue_data["repository"]["issue"]["id"]
-    current_label_ids = [label["id"] for label in issue_data["repository"]["issue"]["labels"]["nodes"]]
-    
-    if not current_label_ids:
-        return {"message": f"Issue {issue_number} has no labels to remove"}
-    
-    # Remove all labels
-    label_ids_string = ", ".join([f'"{lid}"' for lid in current_label_ids])
+
+    issue_id = await get_issue_id(runtime, issue_number)
+
+    if not issue_id:
+        return {"error": f"Issue {issue_number} not found"}
+
     mutation = f"""
-    mutation RemoveAllLabelsFromIssue {{
-      removeLabelsFromLabelable(input: {{labelableId: "{issue_id}", labelIds: [{label_ids_string}]}}) {{
-        clientMutationId
+    mutation {{
+      clearLabelsFromLabelable(input: {{labelableId: "{issue_id}"}}) {{
+        labelable {{
+          labels {{
+            totalCount
+          }}
+        }}
       }}
     }}
     """
-    
-    await execute_graphql_query(runtime, mutation)
-    
+
+    data = await execute_graphql_query(runtime, mutation)
+    total_count = data["clearLabelsFromLabelable"]["labelable"]["labels"]["totalCount"]
+
+    if total_count > 0:
+        return {"error": f"Failed to remove all labels from issue {issue_number}"}
+
     return {"message": f"All labels removed from issue {issue_number}"}
 
 
@@ -271,14 +177,14 @@ async def remove_label_from_issue_graphql(
     label_id: str,
 ):
     """Removes a specific label from an issue using GraphQL
-    
+
     Args:
         issue_number: The number that identifies the issue
         label_id: The GraphQL node ID of the label to remove
     """
     owner = runtime.context.owner
     repository = runtime.context.repository
-    
+
     # First, get the issue ID
     issue_query = """
     query GetIssueId($owner: String!, $name: String!, $number: Int!) {
@@ -289,15 +195,19 @@ async def remove_label_from_issue_graphql(
       }
     }
     """
-    
-    issue_data = await execute_graphql_query(runtime, issue_query, {
-        "owner": owner,
-        "name": repository,
-        "number": issue_number,
-    })
-    
+
+    issue_data = await execute_graphql_query(
+        runtime,
+        issue_query,
+        {
+            "owner": owner,
+            "name": repository,
+            "number": issue_number,
+        },
+    )
+
     issue_id = issue_data["repository"]["issue"]["id"]
-    
+
     mutation = f"""
     mutation RemoveLabelFromIssue {{
       removeLabelsFromLabelable(input: {{labelableId: "{issue_id}", labelIds: ["{label_id}"]}}) {{
@@ -315,10 +225,10 @@ async def remove_label_from_issue_graphql(
     
     {LABEL_FRAGMENT}
     """
-    
+
     data = await execute_graphql_query(runtime, mutation)
     labels = data["removeLabelsFromLabelable"]["labelable"]["labels"]["nodes"]
-    
+
     return {"labels": [format_label_graphql(label) for label in labels]}
 
 
@@ -329,14 +239,14 @@ async def list_repository_labels_graphql(
     after: Optional[str] = None,
 ):
     """Lists all labels for a repository using GraphQL
-    
+
     Args:
         first: Number of results to fetch (max 100)
         after: Cursor for pagination
     """
     owner = runtime.context.owner
     repository = runtime.context.repository
-    
+
     query = f"""
     query ListRepositoryLabels($owner: String!, $name: String!, $first: Int!, $after: String) {{
       repository(owner: $owner, name: $name) {{
@@ -357,7 +267,7 @@ async def list_repository_labels_graphql(
     
     {LABEL_FRAGMENT}
     """
-    
+
     variables = {
         "owner": owner,
         "name": repository,
@@ -365,10 +275,10 @@ async def list_repository_labels_graphql(
     }
     if after:
         variables["after"] = after
-    
+
     data = await execute_graphql_query(runtime, query, variables)
     labels_data = data["repository"]["labels"]
-    
+
     return {
         "totalCount": labels_data["totalCount"],
         "pageInfo": labels_data["pageInfo"],
@@ -384,7 +294,7 @@ async def create_label_graphql(
     description: Optional[str] = None,
 ):
     """Creates a new label for the repository using GraphQL
-    
+
     Args:
         name: The name of the label (can include emoji)
         color: Hexadecimal color code without the leading # (e.g., 'f29513')
@@ -392,7 +302,7 @@ async def create_label_graphql(
     """
     owner = runtime.context.owner
     repository = runtime.context.repository
-    
+
     # First, get the repository ID
     repo_query = """
     query GetRepositoryId($owner: String!, $name: String!) {
@@ -401,26 +311,30 @@ async def create_label_graphql(
       }
     }
     """
-    
-    repo_data = await execute_graphql_query(runtime, repo_query, {
-        "owner": owner,
-        "name": repository,
-    })
-    
+
+    repo_data = await execute_graphql_query(
+        runtime,
+        repo_query,
+        {
+            "owner": owner,
+            "name": repository,
+        },
+    )
+
     repository_id = repo_data["repository"]["id"]
-    
+
     # Build the input object
     input_fields = [
         f'repositoryId: "{repository_id}"',
         f'name: "{name}"',
         f'color: "{color}"',
     ]
-    
+
     if description:
         input_fields.append(f'description: "{description}"')
-    
+
     input_string = "{" + ", ".join(input_fields) + "}"
-    
+
     mutation = f"""
     mutation CreateLabel {{
       createLabel(input: {input_string}) {{
@@ -432,10 +346,10 @@ async def create_label_graphql(
     
     {LABEL_FRAGMENT}
     """
-    
+
     data = await execute_graphql_query(runtime, mutation)
     label = data["createLabel"]["label"]
-    
+
     return format_label_graphql(label)
 
 
@@ -445,13 +359,13 @@ async def get_label_graphql(
     label_name: str,
 ):
     """Gets a label by name using GraphQL
-    
+
     Args:
         label_name: The name of the label to retrieve
     """
     owner = runtime.context.owner
     repository = runtime.context.repository
-    
+
     query = f"""
     query GetLabel($owner: String!, $name: String!, $labelName: String!) {{
       repository(owner: $owner, name: $name) {{
@@ -463,19 +377,19 @@ async def get_label_graphql(
     
     {LABEL_FRAGMENT}
     """
-    
+
     variables = {
         "owner": owner,
         "name": repository,
         "labelName": label_name,
     }
-    
+
     data = await execute_graphql_query(runtime, query, variables)
     label = data["repository"]["label"]
-    
+
     if not label:
         return {"error": f"Label '{label_name}' not found"}
-    
+
     return format_label_graphql(label)
 
 
@@ -488,7 +402,7 @@ async def update_label_graphql(
     description: Optional[str] = None,
 ):
     """Updates a label using GraphQL
-    
+
     Args:
         label_id: The GraphQL node ID of the label to update
         name: The new name for the label (can include emoji)
@@ -497,16 +411,16 @@ async def update_label_graphql(
     """
     # Build the input object
     input_fields = [f'id: "{label_id}"']
-    
+
     if name is not None:
         input_fields.append(f'name: "{name}"')
     if color is not None:
         input_fields.append(f'color: "{color}"')
     if description is not None:
         input_fields.append(f'description: "{description}"')
-    
+
     input_string = "{" + ", ".join(input_fields) + "}"
-    
+
     mutation = f"""
     mutation UpdateLabel {{
       updateLabel(input: {input_string}) {{
@@ -518,10 +432,10 @@ async def update_label_graphql(
     
     {LABEL_FRAGMENT}
     """
-    
+
     data = await execute_graphql_query(runtime, mutation)
     label = data["updateLabel"]["label"]
-    
+
     return format_label_graphql(label)
 
 
@@ -531,7 +445,7 @@ async def delete_label_graphql(
     label_id: str,
 ):
     """Deletes a label from the repository using GraphQL
-    
+
     Args:
         label_id: The GraphQL node ID of the label to delete
     """
@@ -542,53 +456,10 @@ async def delete_label_graphql(
       }}
     }}
     """
-    
+
     await execute_graphql_query(runtime, mutation)
-    
+
     return {"message": f"Label {label_id} deleted successfully"}
-
-
-# Helper function to resolve label name to ID
-@tool
-async def resolve_label_name_to_id_graphql(
-    runtime: ToolRuntime[TaskContext],
-    label_name: str,
-):
-    """Resolves a label name to its GraphQL node ID
-    
-    Args:
-        label_name: The name of the label to resolve
-    """
-    owner = runtime.context.owner
-    repository = runtime.context.repository
-    
-    query = """
-    query GetLabelId($owner: String!, $name: String!, $labelName: String!) {
-      repository(owner: $owner, name: $name) {
-        label(name: $labelName) {
-          id
-          name
-        }
-      }
-    }
-    """
-    
-    variables = {
-        "owner": owner,
-        "name": repository,
-        "labelName": label_name,
-    }
-    
-    data = await execute_graphql_query(runtime, query, variables)
-    label = data["repository"]["label"]
-    
-    if not label:
-        return {"error": f"Label '{label_name}' not found"}
-    
-    return {
-        "id": label["id"],
-        "name": label["name"],
-    }
 
 
 def format_label_graphql(label: dict) -> dict:

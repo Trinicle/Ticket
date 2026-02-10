@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import sqlite3
 from typing import Callable
 import httpx
 import json
@@ -13,11 +14,14 @@ from langchain.agents.middleware import (
 from langchain_core.messages import ToolMessage
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.types import Command
+from langgraph.checkpoint.sqlite import SQLiteSaver
 from backend.src.agent.tools.github import (
     github_tools,
     GITHUB_SYSTEM_PROMPT,
     IssueState,
 )
+
+checkpointer = SQLiteSaver(sqlite3.connect("backend/tool-approval.db"))
 
 
 @dataclass
@@ -94,11 +98,11 @@ def change_available_tools(
 
 def create_rag_agent():
     return create_agent(
-        model="gpt-4o-mini",
+        model="openai:gpt-4o-mini",
         system_prompt=GITHUB_SYSTEM_PROMPT,
         tools=github_tools,
         state_schema=IssueState,
         context_schema=TaskContext,
         middleware=[change_available_tools, auth_guard_middleware],
-        checkpointer=InMemorySaver(),
+        checkpointer=checkpointer,
     )
