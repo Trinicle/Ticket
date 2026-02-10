@@ -339,7 +339,7 @@ async def update_issue_graphql(
 
 def format_issue_graphql(issue: dict) -> dict:
     """Convert GraphQL issue response to simplified dictionary"""
-    return {
+    formatted_issue = {
         "id": issue.get("id"),
         "number": issue.get("number"),
         "title": issue.get("title"),
@@ -373,3 +373,118 @@ def format_issue_graphql(issue: dict) -> dict:
         "locked": issue.get("locked", False),
         "lock_reason": issue.get("activeLockReason"),
     }
+
+    # Add linked branches information
+    linked_branches_info = []
+    if issue.get("linkedBranches") and issue["linkedBranches"].get("nodes"):
+        for linked_branch_node in issue["linkedBranches"]["nodes"]:
+            if linked_branch_node.get("ref"):
+                ref = linked_branch_node["ref"]
+                branch_info = {
+                    "name": ref.get("name"),
+                    "repository": ref.get("repository", {}).get("nameWithOwner"),
+                }
+                linked_branches_info.append(branch_info)
+    formatted_issue["linked_branches"] = linked_branches_info
+
+    # Add closed by pull requests information
+    closed_prs_info = []
+    if (
+        issue.get("closedByPullRequestsReferences")
+        and issue["closedByPullRequestsReferences"].get("nodes")
+    ):
+        for pr_node in issue["closedByPullRequestsReferences"]["nodes"]:
+            pr_info = {
+                "id": pr_node.get("id"),
+                "number": pr_node.get("number"),
+                "title": pr_node.get("title"),
+                "url": pr_node.get("url"),
+                "state": pr_node.get("state"),
+                "merge_commit_oid": pr_node.get("mergeCommit", {}).get("oid") if pr_node.get("mergeCommit") else None,
+                "merge_commit_message_headline": pr_node.get("mergeCommit", {}).get("messageHeadline") if pr_node.get("mergeCommit") else None,
+                "head_ref_oid": pr_node.get("headRefOid"),
+            }
+            closed_prs_info.append(pr_info)
+    formatted_issue["closed_by_pull_requests"] = closed_prs_info
+
+    # Add tracked issues information
+    tracked_issues_info = {
+        "total_count": issue.get("trackedIssues", {}).get("totalCount", 0),
+        "issues": []
+    }
+    if issue.get("trackedIssues") and issue["trackedIssues"].get("nodes"):
+        for tracked_issue in issue["trackedIssues"]["nodes"]:
+            issue_info = {
+                "id": tracked_issue.get("id"),
+                "number": tracked_issue.get("number"),
+                "title": tracked_issue.get("title"),
+                "url": tracked_issue.get("url"),
+                "state": tracked_issue.get("state"),
+                "repository": tracked_issue.get("repository", {}).get("nameWithOwner"),
+            }
+            tracked_issues_info["issues"].append(issue_info)
+    formatted_issue["tracked_issues"] = tracked_issues_info
+
+    # Add tracked in issues information
+    tracked_in_issues_info = {
+        "total_count": issue.get("trackedInIssues", {}).get("totalCount", 0),
+        "issues": []
+    }
+    if issue.get("trackedInIssues") and issue["trackedInIssues"].get("nodes"):
+        for tracking_issue in issue["trackedInIssues"]["nodes"]:
+            issue_info = {
+                "id": tracking_issue.get("id"),
+                "number": tracking_issue.get("number"),
+                "title": tracking_issue.get("title"),
+                "url": tracking_issue.get("url"),
+                "state": tracking_issue.get("state"),
+                "repository": tracking_issue.get("repository", {}).get("nameWithOwner"),
+            }
+            tracked_in_issues_info["issues"].append(issue_info)
+    formatted_issue["tracked_in_issues"] = tracked_in_issues_info
+
+    # Add sub-issues information
+    sub_issues_info = {
+        "total_count": issue.get("subIssues", {}).get("totalCount", 0),
+        "issues": []
+    }
+    if issue.get("subIssues") and issue["subIssues"].get("nodes"):
+        for sub_issue in issue["subIssues"]["nodes"]:
+            sub_issue_info = {
+                "id": sub_issue.get("id"),
+                "number": sub_issue.get("number"),
+                "title": sub_issue.get("title"),
+                "url": sub_issue.get("url"),
+                "state": sub_issue.get("state"),
+                "created_at": sub_issue.get("createdAt"),
+                "updated_at": sub_issue.get("updatedAt"),
+                "repository": sub_issue.get("repository", {}).get("nameWithOwner"),
+                "author": sub_issue.get("author", {}).get("login") if sub_issue.get("author") else None,
+                "assignees": [assignee["login"] for assignee in sub_issue.get("assignees", {}).get("nodes", [])],
+                "labels": [
+                    {
+                        "name": label["name"],
+                        "color": label["color"],
+                    }
+                    for label in sub_issue.get("labels", {}).get("nodes", [])
+                ],
+            }
+            sub_issues_info["issues"].append(sub_issue_info)
+    formatted_issue["sub_issues"] = sub_issues_info
+
+    # Add parent issue information
+    parent_issue = None
+    if issue.get("parent"):
+        parent = issue["parent"]
+        parent_issue = {
+            "id": parent.get("id"),
+            "number": parent.get("number"),
+            "title": parent.get("title"),
+            "url": parent.get("url"),
+            "state": parent.get("state"),
+            "repository": parent.get("repository", {}).get("nameWithOwner"),
+            "author": parent.get("author", {}).get("login") if parent.get("author") else None,
+        }
+    formatted_issue["parent_issue"] = parent_issue
+
+    return formatted_issue

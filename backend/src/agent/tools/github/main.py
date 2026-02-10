@@ -47,9 +47,16 @@ class IssueState(AgentState):
     created_at: str
     updated_at: str
     comments_count: int
+    milestone: dict
     labels: List[str]
     assignees: List[str]
     repository: str
+    linked_branches: List[dict]
+    closed_by_pull_requests: List[dict]
+    tracked_issues: dict
+    tracked_in_issues: dict
+    sub_issues: dict
+    parent_issue: dict
 
 
 GRAPHQL_URL = "https://api.github.com/graphql"
@@ -62,13 +69,11 @@ github_tools = [
     search_issues_graphql,
     create_issue_graphql,
     update_issue_graphql,
-    
     # Comment Management (GraphQL)
     get_issue_comments_graphql,
     add_comment_graphql,
     update_comment_graphql,
     delete_comment_graphql,
-    
     # Label Management (GraphQL)
     list_issue_labels_graphql,
     add_labels_to_issue_graphql,

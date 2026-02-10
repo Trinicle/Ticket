@@ -25,17 +25,19 @@ async def execute_graphql_query(
     payload = {"query": query}
     if variables:
         payload["variables"] = variables
-    
+
     async with httpx.AsyncClient(headers=get_graphql_headers(runtime)) as client:
         response = await client.post(GRAPHQL_URL, json=payload)
         response.raise_for_status()
         data = response.json()
-        
+
         # Check for GraphQL errors
         if "errors" in data:
-            error_messages = [error.get("message", "Unknown error") for error in data["errors"]]
+            error_messages = [
+                error.get("message", "Unknown error") for error in data["errors"]
+            ]
             raise Exception(f"GraphQL errors: {'; '.join(error_messages)}")
-        
+
         return data.get("data", {})
 
 
@@ -77,6 +79,86 @@ fragment IssueFields on Issue {
   }
   locked
   activeLockReason
+  linkedBranches(first: 10) {
+    nodes {
+      id
+      ref {
+        name
+        repository {
+          nameWithOwner
+        }
+      }
+    }
+  }
+  closedByPullRequestsReferences(first: 10) {
+    nodes {
+      id
+      number
+      title
+      url
+      state
+      mergeCommit {
+        oid
+        messageHeadline
+      }
+      headRefOid
+    }
+  }
+  trackedIssues(first: 5) {
+    totalCount
+    nodes {
+      id
+      number
+      title
+      url
+      state
+      repository {
+        nameWithOwner
+      }
+    }
+  }
+  trackedInIssues(first: 5) {
+    totalCount
+    nodes {
+      id
+      number
+      title
+      url
+      state
+      repository {
+        nameWithOwner
+      }
+    }
+  }
+  subIssues(first: 5) {
+    totalCount
+    nodes {
+        id
+        number
+        title
+        url
+        state
+        repository {
+            nameWithOwner
+        }
+        author {
+            login
+        }
+    }
+  }
+  parent {
+    id
+    number
+    title
+    url
+    state
+    repository {
+      nameWithOwner
+    }
+    author {
+      login
+    }
+  }
 }
 """
 
