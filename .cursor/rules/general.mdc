@@ -111,6 +111,9 @@ def proc(d):  # Unclear what 'proc' does or what 'd' is
 def increment_counter(counter: int) -> int:
     return counter + 1
 ```
+### Comments
+
+Avoid using comments when code is readable. Only reserve comments for unreadable code, but try to make all code readable.
 
 ## 3. Documentation Standards
 

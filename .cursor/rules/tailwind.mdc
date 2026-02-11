@@ -49,6 +49,8 @@ module.exports = {
 
 Utilize daisyui for components. If any modification is needed towards a daisyui component, extend the component to provide functionality. Avoid recreating existing components readily available in daisyui.
 
+Utilize Lucide icons for icons.
+
 ## 3. Class Ordering & Readability
 
 **Group utility classes logically for improved readability.** While Tailwind doesn't enforce an order, a consistent pattern makes scanning classes easier and reduces cognitive load. We recommend:
