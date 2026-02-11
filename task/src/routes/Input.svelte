@@ -19,15 +19,11 @@
     const content = inputElement.innerText.trim();
     if (!content) return;
 
-    // Clear the input
     inputElement.innerText = '';
-    
-    // Call the callback to send the message
     onSendMessage(content);
   }
 
   function handleKeyDown(event: KeyboardEvent) {
-    // Allow Shift+Enter for new line, Enter alone sends message
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
       handleSend();
@@ -39,7 +35,7 @@
   <div
     bind:this={inputElement}
     contenteditable={!isDisabled}
-    class="focus:outline-none mx-2 mt-2 mb-2 min-h-20 {isDisabled
+    class="focus:outline-hidden focus:ring-2 focus:ring-primary/50 mx-2 mt-2 mb-2 min-h-20 {isDisabled
       ? 'opacity-50 cursor-not-allowed'
       : ''}"
     data-placeholder="Type your task here..."

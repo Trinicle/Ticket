@@ -1,7 +1,8 @@
 from dataclasses import dataclass
 from deepagents import create_deep_agent
 import sqlite3
-from typing import Callable
+import logging
+from typing import Any, Callable
 import httpx
 import json
 from langchain.agents.middleware import (
@@ -19,6 +20,8 @@ from backend.src.agent.tools.github import (
     GITHUB_SYSTEM_PROMPT,
 )
 
+logger = logging.getLogger(__name__)
+
 checkpointer = SqliteSaver(sqlite3.connect("backend/tool-approval.db"))
 
 
@@ -35,6 +38,16 @@ def auth_guard_middleware(
     request: ToolCallRequest,
     handler: Callable[[ToolCallRequest], ToolMessage | Command],
 ) -> ToolMessage | Command:
+    """
+    Middleware that intercepts tool calls and handles authentication errors.
+    
+    Args:
+        request: The tool call request containing tool name and runtime context.
+        handler: The next handler in the middleware chain.
+        
+    Returns:
+        ToolMessage with error details if authentication fails, otherwise the result from handler.
+    """
     tool_name = request.tool.name
     platform = request.runtime.context.get("platform")
 
@@ -69,7 +82,7 @@ def auth_guard_middleware(
                 content=f"HTTP {status_code} error for {tool_name}: {error_message}"
             )
     except Exception as e:
-        print(f"Unexpected error in tool {tool_name}: {e}")
+        logger.error(f"Unexpected error in tool {tool_name}: {e}", exc_info=True)
         return ToolMessage(
             content=f"Unexpected error occurred while executing {tool_name}: {str(e)}"
         )
@@ -79,6 +92,16 @@ def auth_guard_middleware(
 def change_available_tools(
     request: ModelRequest, handler: Callable[[ModelRequest], ModelResponse]
 ) -> ModelResponse:
+    """
+    Middleware that adjusts available tools and system prompts based on platform context.
+    
+    Args:
+        request: The model request containing runtime context and tools.
+        handler: The next handler in the middleware chain.
+        
+    Returns:
+        ModelResponse with adjusted tools and system prompt.
+    """
     system_prompt = request.runtime.context.get("system_prompt")
     platform = request.runtime.context.get("platform")
     state = request.runtime.state
@@ -92,7 +115,16 @@ def change_available_tools(
     )
 
 
-async def create_rag_agent(token: str):
+async def create_rag_agent(token: str) -> Any:
+    """
+    Creates a RAG (Retrieval-Augmented Generation) agent with GitHub integration.
+    
+    Args:
+        token: GitHub authentication token for API access.
+        
+    Returns:
+        Configured agent instance with GitHub tools and middleware.
+    """
     return create_deep_agent(
         model="openai:gpt-4o-mini",
         system_prompt=GITHUB_SYSTEM_PROMPT,

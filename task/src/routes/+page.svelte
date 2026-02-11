@@ -17,7 +17,6 @@
   let isProcessing = $state(false);
   let chatContainer: HTMLDivElement | undefined = $state();
 
-  // Initialize with first conversation if available
   $effect(() => {
     if (conversations.length > 0 && currentConversationId === null) {
       currentConversationId = conversations[0].id;
@@ -33,7 +32,6 @@
 
   function scrollToBottom() {
     if (chatContainer) {
-      // Use setTimeout to ensure DOM has updated
       setTimeout(() => {
         chatContainer?.scrollTo({
           top: chatContainer.scrollHeight,
@@ -80,13 +78,10 @@
     isProcessing = true;
     scrollToBottom();
 
-    // Update conversation's last message and timestamp
     updateConversationMetadata(currentConversationId, content.trim());
 
-    // Simulate LLM processing delay
     await new Promise((resolve) => setTimeout(resolve, 1500 + Math.random() * 1000));
 
-    // Generate a mock response
     const modelResponse: ChatMessage = {
       id: generateMessageId(),
       from: 'model',
@@ -99,7 +94,6 @@
     isProcessing = false;
     scrollToBottom();
 
-    // Update conversation with model's last message
     updateConversationMetadata(currentConversationId, modelResponse.content);
   }
 

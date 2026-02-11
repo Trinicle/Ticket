@@ -1,7 +1,8 @@
+from typing import Any, List, Tuple
 from deepagents import CompiledSubAgent
 from langchain.agents import create_agent
 from langchain_core.messages import SystemMessage
-from langchain_core.tools import StructuredTool
+from langchain_core.tools import StructuredTool, BaseTool
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
 from backend.src.agent.tools.github.comments import (
@@ -43,8 +44,18 @@ def get_mcp_client(token: str):
     )
 
 
-def create_method_specific_tools(mcp_tools):
-    """Create method-specific variants of multi-method MCP tools with inherited schemas"""
+def create_method_specific_tools(
+    mcp_tools: List[BaseTool],
+) -> Tuple[List[StructuredTool], List[StructuredTool], List[StructuredTool]]:
+    """
+    Create method-specific variants of multi-method MCP tools with inherited schemas.
+    
+    Args:
+        mcp_tools: List of MCP tools to process.
+        
+    Returns:
+        Tuple of (issue_tools, comment_tools, label_tools) lists.
+    """
     issue_read_tool = next(
         (tool for tool in mcp_tools if tool.name == "issue_read"), None
     )
@@ -66,10 +77,22 @@ def create_method_specific_tools(mcp_tools):
             "IssueReadWithoutMethod", **fields_without_method
         )
 
-    def create_method_wrapper(method_name: str, tool_name: str, description: str):
-        """Create a wrapper function that pre-sets the method parameter"""
+    def create_method_wrapper(
+        method_name: str, tool_name: str, description: str
+    ) -> StructuredTool:
+        """
+        Create a wrapper function that pre-sets the method parameter.
+        
+        Args:
+            method_name: The method name to pre-set.
+            tool_name: The name for the new tool.
+            description: Description for the new tool.
+            
+        Returns:
+            A StructuredTool instance with the method pre-set.
+        """
 
-        async def wrapper(**kwargs):
+        async def wrapper(**kwargs: Any) -> Any:
             kwargs["method"] = method_name
             return await issue_read_tool.ainvoke(kwargs)
 
@@ -101,7 +124,19 @@ def create_method_specific_tools(mcp_tools):
     return [issue_tool], [comments_tool], [labels_tool]
 
 
-def get_issue_agent(mcp_tools, specialized_issue_tools):
+def get_issue_agent(
+    mcp_tools: List[BaseTool], specialized_issue_tools: List[StructuredTool]
+) -> Any:
+    """
+    Creates an issue agent with appropriate tools and interrupt configuration.
+    
+    Args:
+        mcp_tools: List of MCP tools available.
+        specialized_issue_tools: List of specialized issue tools.
+        
+    Returns:
+        Configured agent instance for issue operations.
+    """
     base_tools = [tool for tool in mcp_tools if tool.name in GITHUB_MCP_ISSUE_TOOLS]
 
     all_tools = base_tools + specialized_issue_tools
@@ -119,7 +154,19 @@ def get_issue_agent(mcp_tools, specialized_issue_tools):
     )
 
 
-def get_comment_agent(mcp_tools, specialized_comment_tools):
+def get_comment_agent(
+    mcp_tools: List[BaseTool], specialized_comment_tools: List[StructuredTool]
+) -> Any:
+    """
+    Creates a comment agent with appropriate tools and interrupt configuration.
+    
+    Args:
+        mcp_tools: List of MCP tools available.
+        specialized_comment_tools: List of specialized comment tools.
+        
+    Returns:
+        Configured agent instance for comment operations.
+    """
     base_tools = [tool for tool in mcp_tools if tool.name in GITHUB_MCP_COMMENT_TOOLS]
 
     graphql_only_tools = [update_comment_graphql, delete_comment_graphql]
@@ -137,7 +184,19 @@ def get_comment_agent(mcp_tools, specialized_comment_tools):
     )
 
 
-def get_label_agent(mcp_tools, specialized_label_tools):
+def get_label_agent(
+    mcp_tools: List[BaseTool], specialized_label_tools: List[StructuredTool]
+) -> Any:
+    """
+    Creates a label agent with appropriate tools and interrupt configuration.
+    
+    Args:
+        mcp_tools: List of MCP tools available.
+        specialized_label_tools: List of specialized label tools.
+        
+    Returns:
+        Configured agent instance for label operations.
+    """
     base_tools = [tool for tool in mcp_tools if tool.name in GITHUB_MCP_LABEL_TOOLS]
 
     all_tools = base_tools + specialized_label_tools
@@ -154,7 +213,16 @@ def get_label_agent(mcp_tools, specialized_label_tools):
     )
 
 
-async def get_github_sub_agents(token: str):
+async def get_github_sub_agents(token: str) -> List[CompiledSubAgent]:
+    """
+    Creates and returns all GitHub sub-agents configured with MCP tools.
+    
+    Args:
+        token: GitHub authentication token.
+        
+    Returns:
+        List of configured CompiledSubAgent instances.
+    """
     mcp_client = get_mcp_client(token)
     mcp_tools = await mcp_client.get_tools()
 

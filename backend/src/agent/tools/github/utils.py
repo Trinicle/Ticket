@@ -44,6 +44,16 @@ async def execute_graphql_query(
 async def get_label_ids_from_names(
     runtime: ToolRuntime[TaskContext], label_names: List[str]
 ) -> List[str]:
+    """
+    Retrieves label IDs from GitHub by their names.
+    
+    Args:
+        runtime: Tool runtime with context containing owner and repository.
+        label_names: List of label names to look up.
+        
+    Returns:
+        List of label IDs matching the provided names.
+    """
     if not label_names:
         return []
 
@@ -83,6 +93,16 @@ async def get_label_ids_from_names(
 
 
 async def get_issue_id(runtime: ToolRuntime[TaskContext], issue_number: int) -> str:
+    """
+    Retrieves the GraphQL ID for a GitHub issue by its number.
+    
+    Args:
+        runtime: Tool runtime with context containing owner and repository.
+        issue_number: The issue number to look up.
+        
+    Returns:
+        The GraphQL ID of the issue.
+    """
     owner = runtime.context.owner
     repository = runtime.context.repository
 
