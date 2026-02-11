@@ -1,0 +1,497 @@
+---
+description: System architecture documentation for the Ticket monorepo. Describes the overall structure, component interactions, data flow, and key architectural decisions.
+globs: **
+---
+# System Architecture
+
+This document describes the architecture of the Ticket project, a monorepo application for managing GitHub issues and comments through an AI agent system.
+
+## 1. High-Level Architecture
+
+The Ticket project follows a **monorepo architecture** with clear separation between backend and frontend:
+
+```
+Ticket/
+├── backend/          # FastAPI + LangChain Agent Backend
+│   ├── src/
+│   │   └── agent/    # Core agent system
+│   └── main.py       # Entry point
+└── task/             # SvelteKit Frontend
+    └── src/
+        ├── routes/   # SvelteKit routes and pages
+        └── lib/      # Shared utilities and components
+```
+
+**Architecture Pattern**: The system uses a **layered agent architecture** where:
+- Frontend (SvelteKit) provides the user interface
+- Backend (FastAPI) exposes API endpoints
+- Agent System (LangChain/DeepAgents) orchestrates AI-powered operations
+- Tools layer provides domain-specific capabilities (GitHub operations)
+
+## 2. Backend Architecture
+
+### 2.1 Core Components
+
+The backend is built around an **AI agent system** that uses LangChain, LangGraph, and DeepAgents to manage GitHub operations.
+
+#### Agent Hierarchy
+
+```
+Main Agent (create_rag_agent)
+├── Middleware Layer
+│   ├── change_available_tools (Model Middleware)
+│   └── auth_guard_middleware (Tool Middleware)
+├── Sub-Agents (CompiledSubAgent)
+│   ├── issue_agent      # Manages GitHub issues
+│   ├── comment_agent    # Manages GitHub comments
+│   └── label_agent     # Manages GitHub labels
+└── Tools Layer
+    ├── MCP Tools (via MultiServerMCPClient)
+    └── Custom GraphQL Tools
+```
+
+#### Key Components
+
+**1. Main Agent (`backend/src/agent/agent.py`)**
+- **Purpose**: Top-level orchestrator for all agent operations
+- **Technology**: `deepagents.create_deep_agent`
+- **Features**:
+  - Context management via `TaskContext` dataclass
+  - Checkpointing via SQLite (`SqliteSaver`)
+  - Middleware pipeline for tool and model interception
+  - Sub-agent delegation
+
+**2. Middleware System**
+- **`change_available_tools`**: Dynamically adjusts available tools and system prompts based on platform context
+- **`auth_guard_middleware`**: Handles authentication errors and provides user-friendly error messages
+  - Intercepts HTTP errors (401, 404, etc.)
+  - Returns structured `ToolMessage` responses
+  - Handles unexpected exceptions gracefully
+
+**3. Sub-Agents (`backend/src/agent/tools/github/main.py`)**
+Each sub-agent is specialized for a specific domain:
+
+- **`issue_agent`**: 
+  - Tools: `issue_write`, `list_issues`, `search_issues`, `sub_issue_write`, `get_issue_details`, `get_issue_comments`, `get_issue_labels`
+  - Interrupts: Before write operations (requires approval)
+  
+- **`comment_agent`**:
+  - Tools: `add_issue_comment` (MCP), `update_comment` (GraphQL), `delete_comment` (GraphQL), `get_issue_comments`
+  - Interrupts: Before create/update/delete operations
+  
+- **`label_agent`**:
+  - Tools: `get_label`, `label_write`, `list_label`, `get_issue_labels`
+  - Interrupts: Before write operations
+
+### 2.2 Tool Architecture
+
+The system uses a **hybrid tool approach** combining MCP (Model Context Protocol) tools and custom GraphQL tools.
+
+#### MCP Integration
+
+**Purpose**: Leverage GitHub's official MCP server for most operations
+
+**Implementation**:
+```python
+MultiServerMCPClient({
+    "github": {
+        "transport": "http",
+        "url": "https://api.githubcopilot.com/mcp/",
+        "headers": {"Authorization": f"Bearer {token}"}
+    }
+})
+```
+
+**Benefits**:
+- Official GitHub integration
+- Better reliability and consistency
+- Automatic API updates
+- Standardized tool interfaces
+
+#### Custom GraphQL Tools
+
+**Purpose**: Handle operations not available in MCP (e.g., comment update/delete)
+
+**Location**: `backend/src/agent/tools/github/comments.py`
+
+**Pattern**: Direct GraphQL queries to `https://api.github.com/graphql`
+
+#### Tool Specialization
+
+The system creates **method-specific tool wrappers** from multi-method MCP tools:
+
+- `issue_read` → `get_issue_details`, `get_issue_comments`, `get_issue_labels`
+- Each wrapper pre-sets the `method` parameter
+- Uses Pydantic `create_model` to generate schemas without the `method` field
+
+### 2.3 State Management and Persistence
+
+**Checkpointing**: SQLite-based checkpointing via `SqliteSaver`
+- **Location**: `backend/tool-approval.db`
+- **Purpose**: Enable human-in-the-loop approvals and state recovery
+- **Technology**: `langgraph.checkpoint.sqlite.SqliteSaver`
+
+**Context Management**: 
+- `TaskContext` dataclass stores:
+  - `platform`: Platform identifier (e.g., "github")
+  - `token`: Authentication token
+  - `owner`: Repository owner
+  - `repository`: Repository name
+
+### 2.4 Error Handling Architecture
+
+**Layered Error Handling**:
+
+1. **Tool Level**: `auth_guard_middleware` catches HTTP errors
+2. **Agent Level**: LangGraph handles agent execution errors
+3. **API Level**: FastAPI handles HTTP exceptions (to be implemented)
+
+**Error Response Format**:
+```python
+ToolMessage(
+    content="Structured error message with context and suggestions"
+)
+```
+
+## 3. Frontend Architecture
+
+### 3.1 SvelteKit Structure
+
+The frontend uses **SvelteKit** with TypeScript and follows file-system routing:
+
+```
+task/src/
+├── routes/
+│   ├── +page.svelte        # Main chat interface
+│   ├── +page.server.ts      # Server-side data loading
+│   ├── Header.svelte        # App header component
+│   ├── Input.svelte         # Chat input component
+│   ├── Source.svelte        # Source selection component
+│   └── Repo.svelte          # Repository selection component
+└── lib/
+    ├── api.ts               # API client (to be connected to backend)
+    └── assets/              # Static assets (icons, etc.)
+```
+
+### 3.2 Component Architecture
+
+**State Management**: Uses Svelte 5 runes (`$state`) for reactive state
+
+**Component Pattern**:
+- **Page Components**: `+page.svelte` - Main UI containers
+- **Feature Components**: `Header.svelte`, `Input.svelte` - Reusable UI elements
+- **Domain Components**: `Source.svelte`, `Repo.svelte` - Domain-specific functionality
+
+**Current State**:
+- Chat interface with message display
+- Input component with contenteditable div
+- Source and repository selection components
+- API client structure (needs backend integration)
+
+### 3.3 Styling Architecture
+
+**Technology**: Tailwind CSS v4 with DaisyUI
+
+**Pattern**: Utility-first CSS with component classes
+- Base styles via Tailwind utilities
+- Component-specific styles in `<style>` blocks
+- DaisyUI for UI components (buttons, etc.)
+
+## 4. Data Flow and Communication
+
+### 4.1 Request Flow
+
+```
+User Input (Frontend)
+    ↓
+SvelteKit Route Handler (+page.server.ts)
+    ↓
+API Client (lib/api.ts) - HTTP Request
+    ↓
+FastAPI Endpoint (to be implemented)
+    ↓
+Agent System (create_rag_agent)
+    ↓
+Sub-Agent Selection (based on task)
+    ↓
+Tool Execution (MCP or GraphQL)
+    ↓
+GitHub API
+    ↓
+Response flows back through layers
+```
+
+### 4.2 Agent Execution Flow
+
+```
+1. User Request → Main Agent
+2. Main Agent → Middleware (change_available_tools)
+3. Middleware → Selects appropriate sub-agent
+4. Sub-Agent → Evaluates available tools
+5. Tool Call → Middleware (auth_guard_middleware)
+6. Tool Execution → GitHub API (MCP or GraphQL)
+7. Response → ToolMessage → Sub-Agent
+8. Sub-Agent → Main Agent → User Response
+```
+
+### 4.3 Interrupt Flow (Human-in-the-Loop)
+
+```
+Tool Call (Write Operation)
+    ↓
+Interrupt Triggered (interrupt_before)
+    ↓
+Checkpoint Saved (SQLite)
+    ↓
+Human Approval Required
+    ↓
+Approval/Rejection
+    ↓
+Resume or Cancel Execution
+```
+
+## 5. Technology Stack
+
+### Backend Stack
+
+- **Runtime**: Python 3.13+
+- **Web Framework**: FastAPI (to be fully implemented)
+- **AI Framework**: 
+  - LangChain (core agent framework)
+  - LangGraph (stateful agent execution)
+  - DeepAgents (high-level agent creation)
+- **MCP Integration**: `langchain-mcp-adapters`
+- **HTTP Client**: `httpx` (async HTTP requests)
+- **Data Validation**: Pydantic v2
+- **Persistence**: SQLite (checkpointing)
+- **Dependency Management**: `uv` (via `pyproject.toml`)
+
+### Frontend Stack
+
+- **Framework**: SvelteKit 2.x
+- **Language**: TypeScript 5.9+
+- **Styling**: Tailwind CSS v4 + DaisyUI
+- **Build Tool**: Vite 7.x
+- **Package Manager**: npm
+- **State**: Svelte 5 runes (`$state`, `$props`)
+
+## 6. Key Architectural Decisions
+
+### 6.1 Why MCP + GraphQL Hybrid?
+
+**Decision**: Use MCP for most operations, GraphQL for missing features
+
+**Rationale**:
+- MCP provides official, well-maintained GitHub integration
+- GraphQL fills gaps (comment update/delete) until MCP supports them
+- Reduces maintenance burden while maintaining feature completeness
+
+### 6.2 Why Sub-Agents?
+
+**Decision**: Decompose agent into specialized sub-agents (issue, comment, label)
+
+**Rationale**:
+- **Separation of Concerns**: Each agent handles one domain
+- **Tool Scoping**: Reduces tool confusion for the LLM
+- **Interrupt Granularity**: Different approval requirements per domain
+- **Maintainability**: Easier to update and test individual domains
+
+### 6.3 Why Middleware Pattern?
+
+**Decision**: Use middleware for cross-cutting concerns (auth, tool selection)
+
+**Rationale**:
+- **Separation of Concerns**: Business logic separate from infrastructure
+- **Reusability**: Middleware applies to all tools/agents
+- **Testability**: Middleware can be tested independently
+- **Flexibility**: Easy to add new middleware (logging, metrics, etc.)
+
+### 6.4 Why SQLite Checkpointing?
+
+**Decision**: Use SQLite for agent state persistence
+
+**Rationale**:
+- **Simplicity**: No external dependencies
+- **Human-in-the-Loop**: Enables approval workflows
+- **Recovery**: Agents can resume from checkpoints
+- **Development**: Easy to inspect and debug state
+
+### 6.5 Why Monorepo?
+
+**Decision**: Single repository for backend and frontend
+
+**Rationale**:
+- **Code Sharing**: Shared types and utilities (future)
+- **Atomic Changes**: Update frontend and backend together
+- **Simplified Development**: Single clone, single CI/CD
+- **Version Alignment**: Keep dependencies in sync
+
+## 7. Integration Points
+
+### 7.1 GitHub API Integration
+
+**Primary**: MCP Server (`https://api.githubcopilot.com/mcp/`)
+- Issues: Create, read, list, search, sub-issues
+- Comments: Add comments
+- Labels: Get, list, create/update
+
+**Secondary**: GraphQL API (`https://api.github.com/graphql`)
+- Comments: Update, delete
+
+**Authentication**: Bearer token in Authorization header
+
+### 7.2 LLM Integration
+
+**Model**: OpenAI GPT-4o-mini (via `openai:` prefix in DeepAgents)
+
+**Configuration**:
+- Temperature: 0 (deterministic responses)
+- System prompts: Domain-specific (GitHub operations)
+- Structured output: Pydantic models for tool responses
+
+## 8. Future Architecture Considerations
+
+### 8.1 Backend API Layer
+
+**Current State**: Agent system exists, FastAPI endpoints to be implemented
+
+**Planned Structure**:
+```
+FastAPI App
+├── /api/v1/agent/
+│   ├── POST /chat          # Send message to agent
+│   ├── GET /status/{id}    # Get agent execution status
+│   └── POST /approve/{id}  # Approve pending tool call
+└── /api/v1/health          # Health check
+```
+
+### 8.2 Frontend-Backend Integration
+
+**Current State**: Frontend has API client structure, needs backend connection
+
+**Planned**:
+- WebSocket or Server-Sent Events for streaming agent responses
+- REST API for initial requests and status checks
+- Type-safe API client with shared types
+
+### 8.3 Additional Platforms
+
+**Current**: GitHub only
+
+**Future**: Extensible to other platforms (GitLab, Jira, etc.)
+- Platform abstraction layer
+- Platform-specific tool modules
+- Unified agent interface
+
+## 9. Development Workflow
+
+### 9.1 Adding a New Tool
+
+1. **Determine Tool Type**: MCP or Custom?
+2. **If MCP**: Add to appropriate tool list (`GITHUB_MCP_*_TOOLS`)
+3. **If Custom**: Create tool function with proper typing
+4. **Add to Sub-Agent**: Include in relevant sub-agent's tool list
+5. **Configure Interrupts**: Set `interrupt_before` if write operation
+6. **Test**: Verify tool execution and error handling
+
+### 9.2 Adding a New Sub-Agent
+
+1. **Create Tool Module**: `backend/src/agent/tools/{platform}/{domain}/`
+2. **Define Tools**: MCP or custom tools
+3. **Create Agent Function**: `get_{domain}_agent(mcp_tools, specialized_tools)`
+4. **Configure Interrupts**: Set approval requirements
+5. **Register Sub-Agent**: Add to `get_github_sub_agents()` return list
+6. **Update System Prompt**: Add domain-specific guidance
+
+### 9.3 Frontend Component Development
+
+1. **Create Component**: `task/src/routes/{Component}.svelte`
+2. **Define Props**: Use Svelte 5 `$props()` with TypeScript interfaces
+3. **State Management**: Use `$state()` for reactive state
+4. **Styling**: Tailwind utilities + component styles
+5. **Integration**: Connect to API client in `lib/api.ts`
+
+## 10. Security Architecture
+
+### 10.1 Authentication
+
+**Current**: Token-based authentication via `TaskContext`
+
+**Flow**:
+1. User provides GitHub token
+2. Token stored in `TaskContext`
+3. Token passed to MCP client and GraphQL requests
+4. Middleware handles authentication errors
+
+### 10.2 Authorization
+
+**Approval System**: 
+- Write operations require human approval
+- Checkpointing enables approval workflow
+- SQLite stores pending approvals
+
+**Error Handling**:
+- 401 errors → Clear authentication messages
+- 404 errors → Contextual not-found messages
+- Other errors → Structured error responses
+
+## 11. Testing Strategy
+
+### 11.1 Backend Testing
+
+**Unit Tests**: 
+- Tool functions
+- Middleware functions
+- Utility functions
+
+**Integration Tests**:
+- Agent execution flows
+- Sub-agent tool selection
+- Error handling paths
+
+**E2E Tests**:
+- Full agent workflows
+- GitHub API integration (mocked)
+
+### 11.2 Frontend Testing
+
+**Unit Tests** (Vitest):
+- Component logic
+- Utility functions
+- State management
+
+**E2E Tests** (Playwright):
+- User interactions
+- Chat flow
+- Error scenarios
+
+## 12. Deployment Architecture
+
+### 12.1 Backend Deployment
+
+**Requirements**:
+- Python 3.13+
+- SQLite database (checkpointing)
+- Environment variables (API keys, tokens)
+- FastAPI with Uvicorn/Gunicorn
+
+**Considerations**:
+- Stateless API servers (checkpoint DB can be shared)
+- Horizontal scaling possible
+- WebSocket support for streaming
+
+### 12.2 Frontend Deployment
+
+**Requirements**:
+- Node.js build environment
+- Static hosting (Vercel, Netlify, etc.)
+- Environment variables for API endpoints
+
+**Considerations**:
+- SSR vs SSG based on requirements
+- API endpoint configuration
+- Asset optimization
+
+---
+
+**Note**: This architecture document should be updated as the system evolves. Key changes should be reflected here to maintain accurate documentation.

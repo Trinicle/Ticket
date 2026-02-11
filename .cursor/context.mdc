@@ -1,0 +1,121 @@
+---
+alwaysApply: true
+---
+
+# System Context and Objectives
+
+This document describes the core objectives, user requirements, and operational constraints of the Ticket system.
+
+## System Purpose
+
+Ticket is an AI-powered chatbot system that enables users to interact with DevOps platforms (GitHub, GitLab, Azure DevOps, etc.) through natural language queries. The system allows users to query, modify, and delete issues across multiple platforms, providing insights into codebase understanding and team velocity/progression metrics.
+
+## Core Objectives
+
+### 1. Multi-Platform DevOps Integration
+- **Primary Goal**: Enable seamless interaction with multiple DevOps platforms through a unified chat interface
+- **Supported Platforms**: GitHub, GitLab, Git, Azure DevOps, and extensible to other platforms
+- **Operations**: Users can query information, modify issues, and delete issues across all supported platforms
+
+### 2. Codebase and Team Insights
+- **Codebase Understanding**: Help users gain deeper knowledge about codebases through intelligent querying
+- **Velocity Metrics**: Provide insights into team progression and development velocity
+- **Repository Analytics**: Enable analysis of repository activity, issue trends, and team productivity
+
+### 3. Natural Language Interface
+- **Chat-Based Interaction**: Users interact with the system through conversational queries
+- **Context-Aware Responses**: The AI agent understands context and provides relevant, actionable responses
+- **Multi-Turn Conversations**: Support for complex, multi-step queries and follow-up questions
+
+## Target Users
+
+### Primary Customers
+1. **Project Managers**: Track project progress, monitor issue status, analyze team velocity
+2. **Managers**: Oversee team productivity, understand codebase health, make data-driven decisions
+3. **Software Developers**: Query codebase information, manage issues, understand project context
+
+### Secondary Users
+- **Anyone** with access to DevOps platforms can use the system
+- No technical expertise required beyond basic platform familiarity
+
+## Authentication and Security Model
+
+### Access Token Requirements
+- **User-Provided Tokens**: Users must provide platform-specific access tokens (e.g., GitHub personal access token)
+- **Token Purpose**: Tokens enable access to private or hidden repositories that users have permission to access
+- **Access Scope**: The system can only access resources that the user can normally access through the platform's standard interface
+  - Example: An OpenAI employee can access internal repositories; a regular user cannot
+  - The system respects the same permission boundaries as the platform's web interface
+
+### Token Storage and Security
+- **Never Saved**: Access tokens are **never** persisted to the backend or database
+- **Local Storage Only**: Tokens are stored exclusively in the user's browser (localStorage/sessionStorage)
+- **Session-Based**: Tokens remain active only for the duration of the user's session
+- **No Server Persistence**: The backend receives tokens per-request but does not store them
+
+### Security Principles
+- **Zero Trust**: System assumes no persistent authentication state
+- **User Control**: Users maintain full control over their access tokens
+- **Privacy First**: No token data leaves the user's device except for API requests
+- **Permission Respect**: System respects platform-level permissions and access controls
+
+## User Experience Requirements
+
+### Conversation Management
+- **Persistent Conversations**: Users can continue previous conversations like regular chat applications
+- **Conversation History**: System maintains conversation context across sessions
+- **Multi-Device Support**: Users should be able to login and continue conversations from different devices
+  - Note: Since tokens are local-only, users must re-authenticate per device
+  - Conversation history may be synced separately from authentication
+
+### Platform and Repository Flexibility
+- **Platform Switching**: Users can freely switch between platforms (GitHub → GitLab → Azure DevOps) within a single conversation
+- **Repository Switching**: Users can switch between repositories within the same platform during a conversation
+- **Context Preservation**: When switching platforms/repositories, relevant conversation context should be maintained where appropriate
+- **Seamless Transitions**: Platform and repository changes should not require starting a new conversation
+
+### Workflow Requirements
+1. **Platform Selection**: User selects the target platform (e.g., "GitHub")
+2. **Repository Selection**: User selects the specific repository within the platform
+3. **Token Provision**: User provides access token for the selected platform
+4. **Query Execution**: User submits natural language queries
+5. **Context Switching**: User can change platform/repository without losing conversation flow
+
+## System Constraints and Boundaries
+
+### Access Limitations
+- **Platform-Dependent**: System capabilities are limited by what each platform's API supports
+- **Permission-Based**: Access is restricted to what the user's token permissions allow
+- **Read/Write Operations**: System supports both read (query) and write (modify, delete) operations
+- **Approval Workflow**: Write operations may require user approval (human-in-the-loop)
+
+### Data Privacy
+- **No Token Persistence**: Access tokens never leave the user's browser except for API calls
+- **Conversation Data**: Conversation history may be stored server-side, but tokens are not
+- **User Control**: Users can clear local storage to remove tokens at any time
+
+### Platform Extensibility
+- **Modular Design**: System architecture supports adding new platforms without major refactoring
+- **Unified Interface**: All platforms expose similar capabilities through a consistent interface
+- **Platform-Specific Features**: System can leverage platform-specific features while maintaining consistency
+
+## Key Design Principles
+
+1. **User Privacy**: Tokens and credentials are user-controlled and never persisted server-side
+2. **Platform Agnostic**: Core system logic is independent of specific platform implementations
+3. **Conversation Continuity**: Users can maintain context across platform and repository switches
+4. **Access Transparency**: System clearly communicates what resources are accessible based on token permissions
+5. **Extensibility**: Architecture supports adding new platforms and features without breaking existing functionality
+
+## Success Criteria
+
+The system is successful when:
+- Users can seamlessly query and manage issues across multiple DevOps platforms
+- Users gain actionable insights about codebases and team velocity
+- Users feel confident that their credentials are secure and private
+- Users can switch between platforms and repositories without friction
+- The system scales to support additional platforms and use cases
+
+---
+
+**Note**: This context document should guide all development decisions. When implementing features, ensure they align with these objectives and constraints.
