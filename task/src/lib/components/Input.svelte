@@ -126,7 +126,7 @@
     {/if}
     <input
       type={inputType}
-      {value}
+      bind:value
       {placeholder}
       {id}
       {name}

@@ -1,5 +1,18 @@
 <script lang="ts">
   import Input from '$lib/components/Input.svelte';
+
+  function handleSubmit(event: SubmitEvent) {
+    event.preventDefault();
+
+    const formData = new FormData(event.target as HTMLFormElement);
+    const name = formData.get('name') as string;
+    const email = formData.get('email') as string;
+    const password = formData.get('password') as string;
+
+    // TODO: Implement backend authentication
+    console.log('Sign up attempt:', { name, email });
+    // Future: Send POST request to backend API
+  }
 </script>
 
 <div class="min-h-screen flex items-center justify-center bg-base-200">
@@ -7,7 +20,7 @@
     <div class="card-body">
       <h2 class="card-title text-2xl font-bold mb-2">Get Started</h2>
 
-      <form class="flex flex-col gap-2">
+      <form class="flex flex-col gap-2" onsubmit={handleSubmit}>
         <div>
           <Input
             label="Name"
