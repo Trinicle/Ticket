@@ -115,7 +115,7 @@ def change_available_tools(
     )
 
 
-async def create_rag_agent(token: str) -> Any:
+async def create_rag_agent(token: str):
     """
     Creates a RAG (Retrieval-Augmented Generation) agent with GitHub integration.
     
