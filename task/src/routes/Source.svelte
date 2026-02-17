@@ -17,13 +17,6 @@
   id="source-popover"
   style="position-anchor:--anchor-source"
 >
-  <li>
-    <div class="flex flex-row gap-2">
-      <img src={edit} alt="Edit" height="20" width="20" />
-      <p>Edit Token</p>
-    </div>
-  </li>
-  <hr class="my-1" />
   <li class="py-1.5 px-3">Sources</li>
   <li><a class="menu-active">GitHub</a></li>
   <li><a>GitLab</a></li>
